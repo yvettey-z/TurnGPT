@@ -56,6 +56,7 @@ def train():
     parser.add_argument("--name_info", type=str, default="")
     parser.add_argument("--early_stopping", action="store_true")
     parser.add_argument("--patience", default=10, type=int)
+    parser.add_argument("--load_from_checkpoint", action='store_true')
     args = parser.parse_args()
 
     print("Datasets: ", args.datasets)
@@ -64,21 +65,24 @@ def train():
 
     # Model
     print("Loading Model...")
-    model = TurnGPT(
-        pretrained_model_name_or_path=args.pretrained_model_name_or_path,
-        trp_projection_steps=args.trp_projection_steps,
-        trp_projection_type=args.trp_projection_type,
-        weight_loss=args.weight_loss,
-        weight_eos_token=args.weight_eos_token,
-        weight_regular_token=args.weight_regular_token,
-        learning_rate=args.learning_rate,
-        dropout=args.dropout,
-        pretrained=args.pretrained,
-        no_train_first_n=args.no_train_first_n,
-        omit_dialog_states=args.omit_dialog_states,
-    )
-    model.init_tokenizer()  # required for fresh model (saved on checkpoint)
-    model.initialize_special_embeddings()  # required for fresh model (also performed in on_load_checkpoint)
+    if args.load_from_checkpoint:
+        model = TurnGPT.load_from_checkpoint(args.pretrained_model_name_or_path)
+    else:
+        model = TurnGPT(
+            pretrained_model_name_or_path=args.pretrained_model_name_or_path,
+            trp_projection_steps=args.trp_projection_steps,
+            trp_projection_type=args.trp_projection_type,
+            weight_loss=args.weight_loss,
+            weight_eos_token=args.weight_eos_token,
+            weight_regular_token=args.weight_regular_token,
+            learning_rate=args.learning_rate,
+            dropout=args.dropout,
+            pretrained=args.pretrained,
+            no_train_first_n=args.no_train_first_n,
+            omit_dialog_states=args.omit_dialog_states,
+        )
+        model.init_tokenizer()  # required for fresh model (saved on checkpoint)
+        model.initialize_special_embeddings()  # required for fresh model (also performed in on_load_checkpoint)
     model.print_parameters()
 
     # DataModule
