@@ -5,3 +5,4 @@ wandb
 matplotlib
 einops
 pytest
+torchaudio
