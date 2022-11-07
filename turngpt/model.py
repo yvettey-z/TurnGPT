@@ -8,6 +8,7 @@ from transformers.models.gpt2.modeling_gpt2 import GPT2DoubleHeadsModelOutput
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+import torchmetrics
 
 from turngpt.generation import generate
 from turngpt.plot_utils import plot_trp
@@ -279,9 +280,13 @@ class TurnGPT(pl.LightningModule, Utils):
 
         # TRP projection head
         self.trp_projection_steps = trp_projection_steps
+        self.train_accuracy, self.valid_accuracy, self.test_accuracy = None, None, None
         if trp_projection_steps > 0:
             self.trp_projection_type = trp_projection_type
             hidden_size = self.transformer.config.hidden_size
+            self.train_accuracy = torchmetrics.Accuracy(average='macro', num_classes=2, multiclass=True)
+            self.valid_accuracy = torchmetrics.Accuracy(average='macro', num_classes=2, multiclass=True)
+            self.test_accuracy = torchmetrics.Accuracy(average='macro', num_classes=2, multiclass=True)
 
             # MultiTask Head operating on n last hidden states
             if trp_projection_type.lower() == "attention":
@@ -584,10 +589,22 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("loss_lm", out["loss"])
             self.log("loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
+            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
         else:
             self.log("loss", out["loss"])
             total_loss = out["loss"]
-        return {"loss": total_loss}
+            return {"loss": total_loss}
+
+    def training_step_end(self, step_output):
+        if self.trp_projection_steps > 0:
+            shift_logits, shift_labels = self.shift_logits_labels(step_output["mc_logits"], step_output["mc_labels"])
+            self.train_accuracy(shift_logits, shift_labels)
+            self.log("bAcc", self.train_accuracy, prog_bar=True, logger=False)
+    
+    def training_epoch_end(self, outputs):
+        if self.trp_projection_steps > 0:
+            self.log("train_bAcc_epoch", self.train_accuracy.compute())
+            self.train_accuracy.reset()
 
     def validation_step(self, batch, batch_idx):
         lm_labels = self.get_labels(batch["input_ids"], mask=batch["attention_mask"])
@@ -612,10 +629,36 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("val_loss_lm", out["loss"])
             self.log("val_loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
+            self.log("val_loss", total_loss)
+            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
         else:
             total_loss = out["loss"]
+            self.log("val_loss", total_loss)
+            return {"loss": total_loss}
 
-        self.log("val_loss", total_loss)
+    def validation_step_end(self, outputs):
+        if self.trp_projection_steps > 0:
+            shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
+            self.valid_accuracy(shift_logits, shift_labels)
+            self.log("bAcc", self.valid_accuracy, prog_bar=True, logger=False)
+
+    def validation_epoch_end(self, outputs):
+        if self.trp_projection_steps > 0:
+            self.log("valid_bAcc_epoch", self.valid_accuracy.compute())
+            self.valid_accuracy.reset()
+
+    def shift_logits_labels(self, logits, labels):
+        # Shift so that tokens < n predict n
+        shift_logits = logits[..., :-1]  # , :].contiguous()
+        shift_labels = labels[..., 1:]  # .contiguous()
+
+        # Manually select appropriate steps
+        # Omit steps where label is -100 (like CrossEntropyLoss)
+        indices_for_training = shift_labels != -100
+        shift_logits = torch.masked_select(shift_logits, indices_for_training)
+        shift_labels = torch.masked_select(shift_labels, indices_for_training)
+
+        return shift_logits, shift_labels.int()
 
     @staticmethod
     def add_model_specific_args(parent_parser):
