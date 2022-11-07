@@ -6,7 +6,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 import pytorch_lightning as pl
 
-from datasets_turntaking import DialogTextDM
+from datasets_turntaking.dialog_text_dm import ConversationalDM
 from turngpt.model import TurnGPT, TurnGPTWandbCallbacks
 
 
@@ -50,7 +50,7 @@ def default_logger_callbacks(name, args, callbacks):
 def train():
     parser = ArgumentParser()
     parser = TurnGPT.add_model_specific_args(parser)
-    parser = DialogTextDM.add_data_specific_args(parser)
+    parser = ConversationalDM.add_data_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--name_info", type=str, default="")
@@ -82,7 +82,7 @@ def train():
     model.print_parameters()
 
     # DataModule
-    dm = DialogTextDM(
+    dm = ConversationalDM(
         datasets=args.datasets,
         tokenizer=model.tokenizer,
         batch_size=args.batch_size,
