@@ -1,4 +1,4 @@
-test = "turngpt/test.py --batch_size 16 --load_from_checkpoint --pretrained_model_name_or_path runs/TurnGPT/TurnGPT_1d02ntdz/epoch=1_val_loss=14.5024.ckpt --gpus -1"
+test="python turngpt/test.py --batch_size 16 --load_from_checkpoint --pretrained_model_name_or_path runs/TurnGPT/TurnGPT_1d02ntdz/epoch=1_val_loss=14.5024.ckpt --gpus -1"
 
 # datasets:
 # default is to use all
