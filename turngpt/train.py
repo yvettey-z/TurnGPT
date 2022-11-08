@@ -9,6 +9,8 @@ import pytorch_lightning as pl
 from datasets_turntaking.dialog_text_dm import ConversationalDM
 from turngpt.model import TurnGPT, TurnGPTWandbCallbacks
 
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 PROJECT = "TurnGPT"
 SAVE_DIR = "runs/TurnGPT"
