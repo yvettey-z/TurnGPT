@@ -647,6 +647,47 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("valid_bAcc_epoch", self.valid_accuracy.compute())
             self.valid_accuracy.reset()
 
+    def test_step(self, batch, batch_idx):
+        lm_labels = self.get_labels(batch["input_ids"], mask=batch["attention_mask"])
+
+        proj_labels = None
+        if self.trp_projection_steps > 0:
+            proj_labels = self.get_projection_labels(
+                batch["input_ids"], mask=batch["attention_mask"]
+            )
+
+        if self.omit_dialog_states:
+            batch["speaker_ids"] = None
+
+        out = self.forward(
+            batch["input_ids"],
+            speaker_ids=batch["speaker_ids"],
+            labels=lm_labels,
+            mc_labels=proj_labels,
+        )
+
+        if self.trp_projection_steps > 0:
+            self.log("test_loss_lm", out["loss"])
+            self.log("test_loss_projection", out["mc_loss"])
+            total_loss = out["loss"] + out["mc_loss"]
+            self.log("test_loss", total_loss)
+            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
+        else:
+            total_loss = out["loss"]
+            self.log("test_loss", total_loss)
+            return {"loss": total_loss}
+
+    def test_step_end(self, outputs):
+        if self.trp_projection_steps > 0:
+            shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
+            self.test_accuracy(shift_logits, shift_labels)
+            self.log("bAcc", self.test_accuracy, prog_bar=True, logger=False)
+
+    def test_epoch_end(self, outputs):
+        if self.trp_projection_steps > 0:
+            self.log("test_bAcc_epoch", self.test_accuracy.compute())
+            self.test_accuracy.reset()
+    
     def shift_logits_labels(self, logits, labels):
         # Shift so that tokens < n predict n
         shift_logits = logits[..., :-1]  # , :].contiguous()
