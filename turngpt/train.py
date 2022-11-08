@@ -20,7 +20,9 @@ def default_logger_callbacks(name, args, callbacks):
         save_dir=SAVE_DIR,
         project=PROJECT,
         name=name + args.name_info,
-        log_model=True,
+        log_model=False,
+        id=args.id,
+        resume=args.resume
     )
     # logger.watch(model)
 
@@ -57,6 +59,8 @@ def train():
     parser.add_argument("--early_stopping", action="store_true")
     parser.add_argument("--patience", default=10, type=int)
     parser.add_argument("--load_from_checkpoint", action='store_true')
+    parser.add_argument("--resume", default=None)
+    parser.add_argument("--id", default=None)
     args = parser.parse_args()
 
     print("Datasets: ", args.datasets)
@@ -65,8 +69,10 @@ def train():
 
     # Model
     print("Loading Model...")
+    ckpt_path = None
     if args.load_from_checkpoint:
         model = TurnGPT.load_from_checkpoint(args.pretrained_model_name_or_path)
+        ckpt_path = args.pretrained_model_name_or_path
     else:
         model = TurnGPT(
             pretrained_model_name_or_path=args.pretrained_model_name_or_path,
@@ -118,7 +124,7 @@ def train():
         callbacks=callbacks,
     )
 
-    trainer.fit(model, datamodule=dm)
+    trainer.fit(model, datamodule=dm, ckpt_path=ckpt_path)
 
 
 if __name__ == "__main__":
