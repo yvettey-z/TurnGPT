@@ -589,7 +589,7 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("loss_lm", out["loss"])
             self.log("loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
-            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
+            return {"loss": total_loss, "mc_logits": out["mc_logits"].detach(), "mc_labels": proj_labels.detach()}
         else:
             self.log("loss", out["loss"])
             total_loss = out["loss"]
@@ -639,8 +639,8 @@ class TurnGPT(pl.LightningModule, Utils):
     def validation_step_end(self, outputs):
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
-            self.valid_accuracy(shift_logits, shift_labels)
-            self.log("bAcc", self.valid_accuracy, prog_bar=True, logger=False)
+            self.valid_accuracy.update(shift_logits, shift_labels)
+            #self.log("bAcc", bacc, prog_bar=True, logger=False)
 
     def validation_epoch_end(self, outputs):
         if self.trp_projection_steps > 0:
@@ -680,8 +680,8 @@ class TurnGPT(pl.LightningModule, Utils):
     def test_step_end(self, outputs):
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
-            self.test_accuracy(shift_logits, shift_labels)
-            self.log("bAcc", self.test_accuracy, prog_bar=True, logger=False)
+            self.test_accuracy.update(shift_logits, shift_labels)
+            #self.log("bAcc", bacc, prog_bar=True, logger=False)
 
     def test_epoch_end(self, outputs):
         if self.trp_projection_steps > 0:
