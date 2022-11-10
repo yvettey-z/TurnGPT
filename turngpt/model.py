@@ -259,6 +259,7 @@ class TurnGPT(pl.LightningModule, Utils):
         weight_loss=False,
         weight_regular_token=0.5,
         weight_eos_token=1.0,
+        weight_decay=0.0,
         **model_kwargs,
     ):
         super().__init__()
@@ -272,6 +273,7 @@ class TurnGPT(pl.LightningModule, Utils):
         self.weight_regular_token = weight_regular_token
         self.weight_eos_token = weight_eos_token
         self.omit_dialog_states = omit_dialog_states
+        self.weight_decay = weight_decay
 
         # Load `transformers` model
         self.transformer = load_transformer(
@@ -546,7 +548,7 @@ class TurnGPT(pl.LightningModule, Utils):
         # Use multiple optimizers for transformer and projection?
         # see:
         #   https://pytorch-lightning.readthedocs.io/en/stable/common/optimizers.html#use-multiple-optimizers-like-gans-manual
-        return torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        return torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
     def on_save_checkpoint(self, checkpoint):
         """We must save the tokenizer used during training"""
@@ -589,7 +591,7 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("loss_lm", out["loss"])
             self.log("loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
-            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
+            return {"loss": total_loss, "mc_logits": out["mc_logits"].detach(), "mc_labels": proj_labels.detach()}
         else:
             self.log("loss", out["loss"])
             total_loss = out["loss"]
@@ -639,8 +641,8 @@ class TurnGPT(pl.LightningModule, Utils):
     def validation_step_end(self, outputs):
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
-            self.valid_accuracy(shift_logits, shift_labels)
-            self.log("bAcc", self.valid_accuracy, prog_bar=True, logger=False)
+            self.valid_accuracy.update(shift_logits, shift_labels)
+            #self.log("bAcc", bacc, prog_bar=True, logger=False)
 
     def validation_epoch_end(self, outputs):
         if self.trp_projection_steps > 0:
@@ -681,7 +683,6 @@ class TurnGPT(pl.LightningModule, Utils):
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
             self.test_accuracy.update(shift_logits, shift_labels)
-            #self.log("bAcc", self.test_accuracy, prog_bar=True, logger=False)
 
     def test_epoch_end(self, outputs):
         if self.trp_projection_steps > 0:
@@ -755,6 +756,7 @@ class TurnGPT(pl.LightningModule, Utils):
         parser.add_argument("--weight_loss", action="store_true")
         parser.add_argument("--weight_eos_token", type=float, default=1.0)
         parser.add_argument("--weight_regular_token", type=float, default=0.5)
+        parser.add_argument("--weight_decay", type=float, default=0.0)
         return parser
 
 
@@ -782,6 +784,7 @@ if __name__ == "__main__":
             pretrained=args.pretrained,
             no_train_first_n=args.no_train_first_n,
             omit_dialog_states=args.omit_dialog_states,
+            weight_decay=args.weight_decay
         )
         model.init_tokenizer()
         model.initialize_special_embeddings()
