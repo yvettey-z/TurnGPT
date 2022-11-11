@@ -683,7 +683,6 @@ class TurnGPT(pl.LightningModule, Utils):
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
             self.test_accuracy.update(shift_logits, shift_labels)
-            #self.log("bAcc", bacc, prog_bar=True, logger=False)
 
     def test_epoch_end(self, outputs):
         if self.trp_projection_steps > 0:
