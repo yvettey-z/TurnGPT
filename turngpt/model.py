@@ -260,6 +260,7 @@ class TurnGPT(pl.LightningModule, Utils):
         weight_regular_token=0.5,
         weight_eos_token=1.0,
         weight_decay=0.0,
+        dropout=None,
         **model_kwargs,
     ):
         super().__init__()
@@ -274,6 +275,12 @@ class TurnGPT(pl.LightningModule, Utils):
         self.weight_eos_token = weight_eos_token
         self.omit_dialog_states = omit_dialog_states
         self.weight_decay = weight_decay
+
+        # Configure dropout rates
+        if dropout is not None:
+            model_kwargs["resid_pdrop"] = dropout
+            model_kwargs["embd_pdrop"] = dropout
+            model_kwargs["attn_pdrop"] = dropout
 
         # Load `transformers` model
         self.transformer = load_transformer(
@@ -294,7 +301,11 @@ class TurnGPT(pl.LightningModule, Utils):
             if trp_projection_type.lower() == "attention":
                 raise NotImplementedError()
             else:
-                self.trp_projection_head = nn.Linear(hidden_size, 1)
+                self.trp_projection_head = nn.Sequential(
+                    nn.Dropout(p=dropout) if dropout is not None else nn.Identity(),
+                    nn.Linear(hidden_size, 1),
+                    )
+                #self.trp_projection_head = nn.Linear(hidden_size, 1)
 
         self.save_hyperparameters()
 
