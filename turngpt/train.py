@@ -89,6 +89,7 @@ def train():
             no_train_first_n=args.no_train_first_n,
             omit_dialog_states=args.omit_dialog_states,
             weight_decay=args.weight_decay,
+            num_speakers=args.num_speakers
         )
         model.init_tokenizer()  # required for fresh model (saved on checkpoint)
         model.initialize_special_embeddings()  # required for fresh model (also performed in on_load_checkpoint)

@@ -261,6 +261,7 @@ class TurnGPT(pl.LightningModule, Utils):
         weight_eos_token=1.0,
         weight_decay=0.0,
         dropout=None,
+        num_speakers=2,
         **model_kwargs,
     ):
         super().__init__()
@@ -275,6 +276,7 @@ class TurnGPT(pl.LightningModule, Utils):
         self.weight_eos_token = weight_eos_token
         self.omit_dialog_states = omit_dialog_states
         self.weight_decay = weight_decay
+        self.num_speakers = num_speakers
 
         # Configure dropout rates
         if dropout is not None:
@@ -303,8 +305,11 @@ class TurnGPT(pl.LightningModule, Utils):
             else:
                 self.trp_projection_head = nn.Sequential(
                     nn.Dropout(p=dropout) if dropout is not None else nn.Identity(),
-                    nn.Linear(hidden_size, 1),
                     )
+                if self.num_speakers > 2:
+                    self.trp_projection_head.append(nn.Linear(hidden_size, self.num_speakers))
+                else:
+                    self.trp_projection_head.append(nn.Linear(hidden_size, 1))
                 #self.trp_projection_head = nn.Linear(hidden_size, 1)
 
         self.save_hyperparameters()
@@ -735,6 +740,7 @@ class TurnGPT(pl.LightningModule, Utils):
         parser.add_argument("--n_layer", type=int, default=None)
         parser.add_argument("--n_embd", type=int, default=None)
         parser.add_argument("--activation_function", type=str, default=None)
+        parser.add_argument("--num_speakers", type=int, default=2)
 
         # TurnGPT specific
         parser.add_argument(
