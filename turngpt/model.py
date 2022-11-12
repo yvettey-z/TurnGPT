@@ -62,7 +62,7 @@ def load_transformer(
 
 
 class Utils:
-    tokenizer: SpokenDialogTokenizer
+    tokenizer: tokenizer_AMI
 
     def idx_to_string(self, idx):
         if isinstance(idx, torch.Tensor):
@@ -76,6 +76,9 @@ class Utils:
     def get_trp(self, x):
         return x[..., self.tokenizer.eos_token_id]
 
+    """
+    
+    Have done adding eos in the tokenizer_AMI()
     def tokenize_strings(self, string_or_list, add_post_eos_token=False):
         if isinstance(string_or_list, str) and add_post_eos_token:
             if not string_or_list.strip().endswith(self.tokenizer.eos_token):
@@ -95,6 +98,7 @@ class Utils:
         for k, v in t.items():
             t[k] = v.to(self.device)
         return t
+    """
 
     def get_tokens(self, input_ids):
         def inner(input_ids):
@@ -130,9 +134,10 @@ class Utils:
 
     @torch.no_grad()
     def string_list_to_trp(
-        self, string_or_list, add_post_eos_token=False, **model_kwargs
+        self, t, add_post_eos_token=False, **model_kwargs
     ):
-        t = self.tokenize_strings(string_or_list, add_post_eos_token=add_post_eos_token)
+        """t will be prepared by tokenizer"""
+        # t = self.tokenize_strings(string_or_list, add_post_eos_token=add_post_eos_token)
 
         # Model
         out = self(t["input_ids"], speaker_ids=t["speaker_ids"], **model_kwargs)
@@ -327,7 +332,7 @@ class TurnGPT(pl.LightningModule, Utils):
 
         # Add extra embeddings for custom tokens
         # Optional: Initialize <ts> to be close to punctuation tokens.
-        self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer))
+        self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer.tokenizer))
 
     def initialize_special_embeddings(self, tokens=["!", "?", "."]):
         """
@@ -383,7 +388,7 @@ class TurnGPT(pl.LightningModule, Utils):
     @torch.no_grad()
     def get_loss_weight(self):
         weight = (
-            torch.ones(len(self.tokenizer), dtype=torch.float)
+            torch.ones(len(self.tokenizer.tokenizer), dtype=torch.float)
             * self.weight_regular_token
         )
         weight[self.tokenizer.eos_token_id] = self.weight_eos_token
@@ -590,7 +595,7 @@ class TurnGPT(pl.LightningModule, Utils):
             print(self.tokenizer)
 
             # Add extra embeddings for custom tokens
-            self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer))
+            self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer.tokenizer))
             print("Resized weights")
             print("#" * 70)
 
