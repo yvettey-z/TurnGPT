@@ -13,7 +13,7 @@ import torchmetrics
 from turngpt.generation import generate
 from turngpt.plot_utils import plot_trp
 from turngpt.projection_labeler import ProjectionLabeler
-from turngpt.tokenizer import SpokenDialogTokenizer
+from turngpt.tokenizer_rev2 import tokenizer_AMI
 
 
 mpl.use("agg")
@@ -310,7 +310,7 @@ class TurnGPT(pl.LightningModule, Utils):
                     self.trp_projection_head.append(nn.Linear(hidden_size, self.num_speakers))
                 else:
                     self.trp_projection_head.append(nn.Linear(hidden_size, 1))
-                #self.trp_projection_head = nn.Linear(hidden_size, 1)
+                # self.trp_projection_head = nn.Linear(hidden_size, 1)
 
         self.save_hyperparameters()
 
@@ -323,7 +323,7 @@ class TurnGPT(pl.LightningModule, Utils):
 
     def init_tokenizer(self):
         # The tokenizer should always be a part of the model
-        self.tokenizer = SpokenDialogTokenizer(self.name_or_path)
+        self.tokenizer = tokenizer_AMI()
 
         # Add extra embeddings for custom tokens
         # Optional: Initialize <ts> to be close to punctuation tokens.
@@ -369,9 +369,10 @@ class TurnGPT(pl.LightningModule, Utils):
         return labels
 
     def get_projection_labels(self, input_ids, mask, value=-100):
+        """match with speaker id, instead of eos token id"""
         labeler = ProjectionLabeler(
             projection_steps=self.trp_projection_steps,
-            token_id=self.tokenizer.eos_token_id,
+            token_id=self.tokenizer.map_from_speaker_id,
         ).to(self.device)
         proj_labels = labeler(input_ids)
         proj_labels[torch.logical_not(mask)] = value
@@ -429,13 +430,17 @@ class TurnGPT(pl.LightningModule, Utils):
             loss = loss.mean()
         return loss
 
-    def bce_loss(self, logits, labels):
+    def ce_loss(self, logits, labels, num_speakers=2):
         """
-        Simple BCELoss for binary trp projection
+        Extended simple BCELoss from binary trp projection to multi-class trp projection
 
-        Must extend this if multiple labels are to be used...
+        Input: num_speakers, 2 by default
         """
-        loss_fct = nn.BCEWithLogitsLoss()
+        if num_speakers == 2:
+            loss_fct = nn.BCEWithLogitsLoss()
+
+        else:
+            loss_fct = nn.CrossEntropyLoss()
 
         # Shift so that tokens < n predict n
         shift_logits = logits[..., :-1]  # , :].contiguous()
@@ -481,6 +486,7 @@ class TurnGPT(pl.LightningModule, Utils):
         self,
         input_ids=None,
         speaker_ids=None,
+        num_speakers=None,
         labels=None,
         mc_labels=None,
         use_cache=None,
@@ -520,6 +526,7 @@ class TurnGPT(pl.LightningModule, Utils):
         )
 
         hidden_states = transformer_outputs[0]
+        num_speakers = self.num_speakers
 
         # Set device for model parallelism
         if self.transformer.model_parallel:
@@ -538,10 +545,13 @@ class TurnGPT(pl.LightningModule, Utils):
         if self.trp_projection_steps > 0:
             # NOTE:
             # Assumed to only guess a single class
-            mc_logits = self.trp_projection_head(hidden_states).squeeze(-1)
+            if num_speakers == 2:
+                mc_logits = self.trp_projection_head(hidden_states).squeeze(-1)   # still need to check
+            else:
+                mc_logits = self.trp_projection_head(hidden_states)
 
             if mc_labels is not None:
-                mc_loss = self.bce_loss(mc_logits, mc_labels)
+                mc_loss = self.ce_loss(mc_logits, mc_labels)
 
         # if not return_dict:
         #     output = (lm_logits, mc_logits) + transformer_outputs[1:]
