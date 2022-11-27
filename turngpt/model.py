@@ -444,12 +444,15 @@ class TurnGPT(pl.LightningModule, Utils):
         if num_speakers == 2:
             loss_fct = nn.BCEWithLogitsLoss()
 
+            shift_logits = logits[..., :-1]   #.contiguous()
+            shift_labels = labels[..., 1:]    #.contiguous()
+
         else:
             loss_fct = nn.CrossEntropyLoss()
 
         # Shift so that tokens < n predict n
-        shift_logits = logits[..., :-1]  # , :].contiguous()
-        shift_labels = labels[..., 1:]  # .contiguous()
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()   # ?
 
         # Manually select appropriate steps
         # Omit steps where label is -100 (like CrossEntropyLoss)
