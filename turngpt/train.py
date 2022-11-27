@@ -6,6 +6,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 import pytorch_lightning as pl
 
+from datasets_turntaking.dialog_text_dm_rev2 import ConversationalDM2  # put the old conversationldm
 from datasets_turntaking.dialog_text_dm import ConversationalDM
 from turngpt.model import TurnGPT, TurnGPTWandbCallbacks
 
@@ -96,18 +97,34 @@ def train():
     model.print_parameters()
 
     # DataModule
-    dm = ConversationalDM(
-        datasets=args.datasets,
-        tokenizer=model.tokenizer,
-        batch_size=args.batch_size,
-        max_length=args.max_length,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_memory,
-        savepath=args.savepath,
-        overwrite=args.overwrite,
-        load_from_cache_file=args.load_from_cache_file,
-        num_proc=args.num_proc,
-    )
+    if args.num_speakers == 2:
+        dm = ConversationalDM(
+            datasets=args.datasets,
+            tokenizer=model.tokenizer,
+            batch_size=args.batch_size,
+            max_length=args.max_length,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_memory,
+            savepath=args.savepath,
+            overwrite=args.overwrite,
+            load_from_cache_file=args.load_from_cache_file,
+            num_proc=args.num_proc,
+        )
+
+    else:
+        dm = ConversationalDM2(
+            datasets=args.datasets,
+            tokenizer=model.tokenizer,
+            batch_size=args.batch_size,
+            max_length=args.max_length,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_memory,
+            savepath=args.savepath,
+            overwrite=args.overwrite,
+            load_from_cache_file=args.load_from_cache_file,
+            num_proc=args.num_proc,
+        )
+
     dm.prepare_data()
 
     # Callbacks & Logger
