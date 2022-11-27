@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 
 import pytorch_lightning as pl
 
+from datasets_turntaking.dialog_text_dm_rev2 import ConversationalDM2
 from datasets_turntaking.dialog_text_dm import ConversationalDM
 from turngpt.model import TurnGPT
 
