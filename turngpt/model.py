@@ -312,10 +312,15 @@ class TurnGPT(pl.LightningModule, Utils):
                     nn.Dropout(p=dropout) if dropout is not None else nn.Identity(),
                     )
                 if self.num_speakers > 2:
-                    self.trp_projection_head.append(nn.Linear(hidden_size, self.num_speakers))
+                    self.trp_projection_head = nn.Sequential(
+                        nn.Dropout(p=dropout) if dropout is not None else nn.Identity(),
+                        nn.Linear(hidden_size, self.num_speakers)
+                    )
                 else:
-                    self.trp_projection_head.append(nn.Linear(hidden_size, 1))
-                # self.trp_projection_head = nn.Linear(hidden_size, 1)
+                    self.trp_projection_head = nn.Sequential(
+                        nn.Dropout(p=dropout) if dropout is not None else nn.Identity(),
+                        nn.Linear(hidden_size, 1))
+                # nn.Sequential doesn't have attribute as "append"
 
         self.save_hyperparameters()
 
