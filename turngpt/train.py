@@ -55,7 +55,7 @@ def default_logger_callbacks(name, args, callbacks):
 def train():
     parser = ArgumentParser()
     parser = TurnGPT.add_model_specific_args(parser)
-    parser = ConversationalDM.add_data_specific_args(parser)
+    parser = ConversationalDM2.add_data_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--name_info", type=str, default="")
