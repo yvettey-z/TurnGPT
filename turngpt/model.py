@@ -458,14 +458,25 @@ class TurnGPT(pl.LightningModule, Utils):
         # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()   # ?
-        print(shift_labels.shape)
+        print("shift_labels:", shift_labels.shape) # (16, 499)
+        print("shift_logits:", shift_logits.shape) # (16, 499, 4)
         # Manually select appropriate steps
         # Omit steps where label is -100 (like CrossEntropyLoss)
         indices_for_training = shift_labels != -100
-        loss = loss_fct(
-            torch.masked_select(shift_logits, indices_for_training),
-            torch.masked_select(shift_labels, indices_for_training),
-        )
+
+        if num_speakers == 2:
+            loss = loss_fct(
+                torch.masked_select(shift_logits, indices_for_training),
+                torch.masked_select(shift_labels, indices_for_training),
+            )
+        else:
+            indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape)
+            print("indices_for_training_expanded:", indices_for_training_expanded.shape)
+        
+            loss = loss_fct(
+                torch.masked_select(shift_logits, indices_for_training_expanded),
+                torch.masked_select(shift_labels, indices_for_training),
+            )
         # shift_logits = torch.masked_select(shift_logits, indices_for_training)
         # shift_labels = torch.masked_select(shift_labels, indices_for_training)
         # loss = loss_fct(shift_logits, shift_labels)
