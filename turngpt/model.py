@@ -473,10 +473,14 @@ class TurnGPT(pl.LightningModule, Utils):
         else:
             indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape)
             print("indices_for_training_expanded:", indices_for_training_expanded.shape)
+            mask_logits = torch.masked_select(shift_logits, indices_for_training_expanded)
+            mask_labels = torch.masked_select(shift_labels, indices_for_training)
 
+            # print("loss_fct[0]:", mask_logits.shape)
+            # print("loss_fct[0]:", mask_labels.shape)
             loss = loss_fct(
-                torch.masked_select(shift_logits, indices_for_training_expanded),
-                torch.masked_select(shift_labels, indices_for_training),
+                torch.masked_select(shift_logits, indices_for_training_expanded).reshape((-1, self.num_speakers)),
+                torch.masked_select(shift_labels, indices_for_training).reshape((-1,)),
             )
         # shift_logits = torch.masked_select(shift_logits, indices_for_training)
         # shift_labels = torch.masked_select(shift_labels, indices_for_training)
