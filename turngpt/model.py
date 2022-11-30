@@ -702,6 +702,8 @@ class TurnGPT(pl.LightningModule, Utils):
     def validation_step_end(self, outputs):
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
+            print("validation_shift logits:", shift_logits.shape)
+            print("validation shit labels:", shift_labels.shape)
             self.valid_accuracy.update(shift_logits, shift_labels)
             #self.log("bAcc", bacc, prog_bar=True, logger=False)
 
