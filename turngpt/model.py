@@ -458,7 +458,7 @@ class TurnGPT(pl.LightningModule, Utils):
         # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()   # ?
-
+        print(shift_labels.shape)
         # Manually select appropriate steps
         # Omit steps where label is -100 (like CrossEntropyLoss)
         indices_for_training = shift_labels != -100
@@ -563,6 +563,8 @@ class TurnGPT(pl.LightningModule, Utils):
             else:
                 mc_logits = self.trp_projection_head(hidden_states)
 
+            print(mc_logits.shape)
+            print(speaker_ids.shape)
             if mc_labels is not None:
                 if num_speakers == 2:
                     mc_loss = self.ce_loss(mc_logits, mc_labels)
@@ -616,7 +618,7 @@ class TurnGPT(pl.LightningModule, Utils):
         proj_labels = None
         if self.trp_projection_steps > 0:
             proj_labels = self.get_projection_labels(
-                batch["input_ids"], mask=batch["attention_mask"]
+               batch["input_ids"], mask=batch["attention_mask"]
             )
 
         if self.omit_dialog_states:
