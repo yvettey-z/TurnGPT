@@ -693,7 +693,7 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("val_loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
             self.log("val_loss", total_loss)
-            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
+            return {"loss": total_loss, "mc_logits": out["mc_logits"].detach(), "mc_labels": proj_labels.detach()}
         else:
             total_loss = out["loss"]
             self.log("val_loss", total_loss)
@@ -736,7 +736,7 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("test_loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
             self.log("test_loss", total_loss)
-            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
+            return {"loss": total_loss, "mc_logits": out["mc_logits"].detach(), "mc_labels": proj_labels.detach()}
         else:
             total_loss = out["loss"]
             self.log("test_loss", total_loss)
