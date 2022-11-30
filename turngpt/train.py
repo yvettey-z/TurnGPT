@@ -126,7 +126,10 @@ def train():
         )
 
     dm.prepare_data()
-
+    for i, data in enumerate(dm.train_dataloader()):
+        print(data)
+        print(len(data['speaker_ids']))
+        break
     # Callbacks & Logger
     logger = None
     callbacks = None
