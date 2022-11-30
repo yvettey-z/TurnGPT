@@ -382,7 +382,7 @@ class TurnGPT(pl.LightningModule, Utils):
         """match with speaker id, instead of eos token id"""
         labeler = ProjectionLabeler(
             projection_steps=self.trp_projection_steps,
-            token_id=self.tokenizer.map_from_speaker_id,
+            token_id=self.tokenizer.eos_token_id,
         ).to(self.device)
         proj_labels = labeler(input_ids)
         proj_labels[torch.logical_not(mask)] = value
@@ -564,7 +564,10 @@ class TurnGPT(pl.LightningModule, Utils):
                 mc_logits = self.trp_projection_head(hidden_states)
 
             if mc_labels is not None:
-                mc_loss = self.ce_loss(mc_logits, mc_labels)
+                if num_speakers == 2:
+                    mc_loss = self.ce_loss(mc_logits, mc_labels)
+                else:
+                    mc_loss = self.ce_loss(mc_logits, speaker_ids)
 
         # if not return_dict:
         #     output = (lm_logits, mc_logits) + transformer_outputs[1:]
