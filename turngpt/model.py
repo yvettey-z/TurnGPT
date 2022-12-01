@@ -770,10 +770,10 @@ class TurnGPT(pl.LightningModule, Utils):
             shift_labels = torch.masked_select(shift_labels, indices_for_training)
 
         else:
-            indices_for_training_expanded = torch.reshape(indices_for_training.unsqueeze(-1).expand(shift_logits.shape), (-1, self.num_speakers))
+            #indices_for_training_expanded = torch.reshape(indices_for_training.unsqueeze(-1).expand(shift_logits.shape), (-1, self.num_speakers))
             indices_for_training = torch.reshape(indices_for_training, (-1,))
 
-            shift_logits = torch.reshape(shift_logits, (-1, self.num_speakers))[indices_for_training_expanded]
+            shift_logits = torch.reshape(shift_logits, (-1, self.num_speakers))[indices_for_training]
             shift_labels = torch.reshape(shift_labels, (-1,))[indices_for_training]
 
         return shift_logits, shift_labels.int()
