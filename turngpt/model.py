@@ -453,7 +453,7 @@ class TurnGPT(pl.LightningModule, Utils):
             shift_labels = labels[..., 1:]    #.contiguous()
 
         else:
-            loss_fct = nn.CrossEntropyLoss()
+            loss_fct = nn.CrossEntropyLoss(reduction="none")
 
         # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
@@ -471,7 +471,7 @@ class TurnGPT(pl.LightningModule, Utils):
                 torch.masked_select(shift_labels, indices_for_training),
             )
         else:
-            indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape)
+            indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape).type(torch.uint8)
             print("indices_for_training_expanded:", indices_for_training_expanded.shape)
             mask_logits = torch.masked_select(shift_logits, indices_for_training_expanded)
             mask_labels = torch.masked_select(shift_labels, indices_for_training)
@@ -480,9 +480,11 @@ class TurnGPT(pl.LightningModule, Utils):
             # print("loss_fct[0]:", mask_labels.shape)
             loss = loss_fct(
                 # torch.masked_select(shift_logits, indices_for_training_expanded).reshape((-1, self.num_speakers)),
-                torch.reshape(torch.masked_select(shift_logits, indices_for_training_expanded), (-1, self.num_speakers)),
-                torch.reshape(torch.masked_select(shift_labels, indices_for_training), (-1,))
+                torch.reshape(shift_logits, (-1, self.num_speakers)),
+                torch.reshape(shift_labels, (-1,))
             )
+
+            loss = torch.sum(loss * torch.reshape(indices_for_training_expanded, (-1,))) / torch.sum(indices_for_training_expanded)
         # shift_logits = torch.masked_select(shift_logits, indices_for_training)
         # shift_labels = torch.masked_select(shift_labels, indices_for_training)
         # loss = loss_fct(shift_logits, shift_labels)
@@ -580,8 +582,6 @@ class TurnGPT(pl.LightningModule, Utils):
             else:
                 mc_logits = self.trp_projection_head(hidden_states)
 
-            print(mc_logits.shape)
-            print(speaker_ids.shape)
             if mc_labels is not None:
                 if num_speakers == 2:
                     mc_loss = self.ce_loss(mc_logits, mc_labels)
@@ -772,8 +772,8 @@ class TurnGPT(pl.LightningModule, Utils):
         else:
             indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape)
 
-            shift_logits = torch.reshape(torch.masked_select(shift_logits, indices_for_training_expanded), (-1, self.num_speakers)),
-            shift_labels = torch.reshape(torch.masked_select(shift_labels, indices_for_training), (-1,))
+            shift_logits = torch.reshape(shift_logits, (-1, self.num_speakers))[indices_for_training_expanded]
+            shift_labels = torch.reshape(shift_labels, (-1,))[indices_for_training]
 
         return shift_logits, shift_labels.int()
 
