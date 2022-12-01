@@ -27,6 +27,10 @@ def default_logger_callbacks(name, args, callbacks):
         id=args.id,
         resume=args.resume
     )
+    print(f'x: {x}')
+    print(f'x.shape: {x.shape}')
+    print(f'proj: {proj}')
+    print(f'proj.shape: {proj.shape}')
     # logger.watch(model)
 
     id_hash = logger.experiment.path.split("/")[-1]
