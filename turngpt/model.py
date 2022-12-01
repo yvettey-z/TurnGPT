@@ -295,9 +295,12 @@ class TurnGPT(pl.LightningModule, Utils):
         if trp_projection_steps > 0:
             self.trp_projection_type = trp_projection_type
             hidden_size = self.transformer.config.hidden_size
-            self.train_accuracy = torchmetrics.Accuracy(average='macro', num_classes=self.num_speakers, multiclass=True)
-            self.valid_accuracy = torchmetrics.Accuracy(average='macro', num_classes=self.num_speakers, multiclass=True)
-            self.test_accuracy = torchmetrics.Accuracy(average='macro', num_classes=self.num_speakers, multiclass=True)
+            self.train_accuracy = torchmetrics.Accuracy(task='multiclass', average='macro',
+                                                        num_classes=self.num_speakers)
+            self.valid_accuracy = torchmetrics.Accuracy(task='multiclass', average='macro',
+                                                        num_classes=self.num_speakers)
+            self.test_accuracy = torchmetrics.Accuracy(task='multiclass', average='macro',
+                                                       num_classes=self.num_speakers)
 
             # MultiTask Head operating on n last hidden states
             if trp_projection_type.lower() == "attention":
