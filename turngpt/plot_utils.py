@@ -27,6 +27,10 @@ def plot_trp(
 
     x = torch.arange(len(trp))
     if proj is not None:
+        print(f'x: {x}')
+        print(f'x.shape: {x.shape}')
+        print(f'proj: {proj}')
+        print(f'proj.shape: {proj.shape}')
         ax.bar(x, proj, alpha=0.1, width=1.0, color="b", label="projection")
     ax.bar(x, trp, width=0.3, color="b", label="TRP")
     ax.set_xticks(x)
