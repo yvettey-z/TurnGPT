@@ -76,15 +76,12 @@ class Utils:
     def get_trp(self, x):
         return x[..., self.tokenizer.eos_token_id]
 
-    """
-    
-    Have done adding eos in the tokenizer_AMI()
     def tokenize_strings(self, string_or_list, add_post_eos_token=False):
         if isinstance(string_or_list, str) and add_post_eos_token:
             if not string_or_list.strip().endswith(self.tokenizer.eos_token):
                 string_or_list += self.tokenizer.eos_token
 
-        t = self.tokenizer(string_or_list, return_tensors="pt")
+        t = self.tokenizer.tokenize_old(string_or_list, return_tensors="pt")
         if not isinstance(t["input_ids"], torch.Tensor):
             tmp_inp, tmp_sp = [], []
             for inp, sp in zip(t["input_ids"], t["speaker_ids"]):
@@ -98,7 +95,6 @@ class Utils:
         for k, v in t.items():
             t[k] = v.to(self.device)
         return t
-    """
 
     def get_tokens(self, input_ids):
         def inner(input_ids):
@@ -134,10 +130,9 @@ class Utils:
 
     @torch.no_grad()
     def string_list_to_trp(
-        self, t, add_post_eos_token=False, **model_kwargs
+        self, string_or_list, add_post_eos_token=False, **model_kwargs
     ):
-        """t will be prepared by tokenizer"""
-        # t = self.tokenize_strings(string_or_list, add_post_eos_token=add_post_eos_token)
+        t = self.tokenize_strings(string_or_list, add_post_eos_token=add_post_eos_token)
 
         # Model
         out = self(t["input_ids"], speaker_ids=t["speaker_ids"], **model_kwargs)

@@ -8,8 +8,9 @@ from tokenizers.normalizers import (
     Sequence,
 )
 from transformers import AutoTokenizer
+from transformers.tokenization_utils_base import BatchEncoding
 import torch
-
+from typing import List, Union
 import logging
 
 
@@ -65,8 +66,20 @@ class tokenizer_AMI():
         self.normalizer = SpokenNormalizer()
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_type)
         self.tokenizer.model_max_length = model_max_length
-        self.tokenizer.add_special_tokens({'pad_token':'<pad>', "eos_token": "<ts>"})
+        speaker_tokens = ["<speaker1>", "<speaker2>", "<speaker3>", "<speaker4>"]
+        self.tokenizer.add_special_tokens({'pad_token':'<pad>', "eos_token": "<ts>", 
+                                           "additional_special_tokens": ["<speaker1>", "<speaker2>", "<speaker3>", "<speaker4>"]})
         self.map_from_speaker_id = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
+        # Speaker Tokens
+        self.sp1_token = speaker_tokens[0]
+        self.sp2_token = speaker_tokens[1]
+        self.sp3_token = speaker_tokens[2]
+        self.sp4_token = speaker_tokens[3]
+        self.sp1_token_id = self.tokenizer.convert_tokens_to_ids(self.sp1_token)
+        self.sp2_token_id = self.tokenizer.convert_tokens_to_ids(self.sp2_token)
+        self.sp3_token_id = self.tokenizer.convert_tokens_to_ids(self.sp3_token)
+        self.sp4_token_id = self.tokenizer.convert_tokens_to_ids(self.sp4_token)
+
 
     def adding_eos(self, words, speakers):
         """
@@ -204,3 +217,101 @@ class tokenizer_AMI():
 
     def convert_tokens_to_string(self, *args, **kwargs):
         return self.tokenizer.convert_tokens_to_string(*args, **kwargs).strip()
+    
+    def tokenize_old(
+        self,
+        text: Union[str, List[str], List[List[str]]],
+        return_token_type_ids: bool = True,
+        include_pre_space: bool = False,
+        include_end_ts: bool = True,
+        **kwargs,
+    ) -> BatchEncoding:
+        """
+        SpokenDialogTokenizer tokenization, which is original tokenizing function in TurnGPT.
+        Therefore, it would accept different data structure as follows, but only applicable when num_speakers = 2.
+
+        `text` can be either a String, a List of Strings, or a List of Lists of Strings. The behaviour of
+        this function depends on the `single_dialog` flag.
+
+        `text` is String:           representation of entire dialog (including eos_token)
+        `text` is List[str]:        representation of turns in a dialog (no eos_tokens)
+        `text` is List[List[str]]:  multiple dialogs (lists of strings) (no eos_tokens)
+
+        """
+
+        # List of lists
+        if isinstance(text, list) and isinstance(text[0], list):
+            ret = {}
+            for text_list in text:
+                o = self.tokenize_old(
+                    text_list,
+                    include_pre_space=include_pre_space,
+                    include_end_ts=include_end_ts,
+                )
+
+                for k, v in o.items():
+                    if not k in ret:
+                        ret[k] = []
+                    ret[k].append(v)
+            return ret
+
+        # List of strings, a dialog: ['hello', 'hello to you']
+        elif isinstance(text, List):
+            dialog_string = ""
+            if include_pre_space:
+                dialog_string = " "
+            dialog_string += self.normalize(text[0])
+            if len(text) > 1:
+                dialog_string += self.eos_token
+                for text_string in text[1:-1]:
+                    dialog_string += " " + self.normalize(text_string) + self.eos_token
+                dialog_string += " " + self.normalize(text[-1])
+            if include_end_ts:
+                dialog_string += self.eos_token
+            text = dialog_string
+        else:
+            text = self.normalize(text)
+
+        encoding = self.tokenizer(
+            text=text,
+            **kwargs,
+        )
+
+        if return_token_type_ids:
+            encoding["speaker_ids"] = self._extract_speaker_states_old(
+                encoding["input_ids"]
+            )
+        return encoding
+
+    def _extract_speaker_states_old(self, input_ids):
+        '''
+        function called in tokenize_old
+        '''
+        # extract speaker states
+        back_to_list = False
+        if not isinstance(input_ids, torch.Tensor):
+            input_ids = torch.tensor(input_ids).unsqueeze(0)  # with batch dim
+            back_to_list = True
+        # initialize with speaker 1
+        speaker_ids = torch.ones_like(input_ids) * self.sp1_token_id
+        batch, eos_idx = torch.where(input_ids == self.eos_token_id)
+        for b in batch.unique():
+            tmp_eos = eos_idx[batch == b]
+            if len(tmp_eos) == 1:
+                speaker_ids[b, eos_idx + 1 :] = self.sp2_token_id
+            else:
+                start = tmp_eos[0]
+                for i, eos in enumerate(tmp_eos[1:]):
+                    if i % 2 == 0:
+                        sp = self.sp2_token_id
+                        speaker_ids[b, start + 1 : eos + 1] = sp
+                    start = eos
+                if i % 2 == 1:  # add sp2 tokens after last eos if i is odd
+                    speaker_ids[b, start + 1 :] = self.sp2_token_id
+
+        if back_to_list:
+            speaker_ids = speaker_ids.squeeze().tolist()
+            if isinstance(speaker_ids, int):
+                speaker_ids = [speaker_ids]
+
+        return speaker_ids
