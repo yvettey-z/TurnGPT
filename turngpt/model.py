@@ -484,7 +484,7 @@ class TurnGPT(pl.LightningModule, Utils):
                 torch.reshape(shift_labels, (-1,))
             )
 
-            loss = torch.sum(loss * torch.reshape(indices_for_training_expanded, (-1,))) / torch.sum(indices_for_training_expanded)
+            loss = torch.sum(loss * torch.reshape(indices_for_training, (-1,))) / torch.sum(indices_for_training)
         # shift_logits = torch.masked_select(shift_logits, indices_for_training)
         # shift_labels = torch.masked_select(shift_labels, indices_for_training)
         # loss = loss_fct(shift_logits, shift_labels)
