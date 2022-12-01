@@ -471,10 +471,10 @@ class TurnGPT(pl.LightningModule, Utils):
                 torch.masked_select(shift_labels, indices_for_training),
             )
         else:
-            indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape).type(torch.uint8)
-            print("indices_for_training_expanded:", indices_for_training_expanded.shape)
-            mask_logits = torch.masked_select(shift_logits, indices_for_training_expanded)
-            mask_labels = torch.masked_select(shift_labels, indices_for_training)
+            #indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape).type(torch.uint8)
+            #print("indices_for_training_expanded:", indices_for_training_expanded.shape)
+            #mask_logits = torch.masked_select(shift_logits, indices_for_training_expanded)
+            #mask_labels = torch.masked_select(shift_labels, indices_for_training)
 
             # print("loss_fct[0]:", mask_logits.shape)
             # print("loss_fct[0]:", mask_labels.shape)
@@ -770,7 +770,7 @@ class TurnGPT(pl.LightningModule, Utils):
             shift_labels = torch.masked_select(shift_labels, indices_for_training)
 
         else:
-            indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape)
+            indices_for_training_expanded = torch.reshape(indices_for_training.unsqueeze(-1).expand(shift_logits.shape), (-1, self.num_speakers))
 
             shift_logits = torch.reshape(shift_logits, (-1, self.num_speakers))[indices_for_training_expanded]
             shift_labels = torch.reshape(shift_labels, (-1,))[indices_for_training]
