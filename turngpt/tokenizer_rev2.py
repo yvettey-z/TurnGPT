@@ -104,7 +104,7 @@ class tokenizer_AMI():
         return new_words
     
     def normalize(self, words):
-        return self.normalizer(words)
+        return self.normalizer.normalize_string(words)
                    
     def speaker_compress(self, speakers):
         """
@@ -260,17 +260,17 @@ class tokenizer_AMI():
             dialog_string = ""
             if include_pre_space:
                 dialog_string = " "
-            dialog_string += self.normalize(text[0])
+            dialog_string += self.normalizer.normalize_string(text[0])
             if len(text) > 1:
                 dialog_string += self.eos_token
                 for text_string in text[1:-1]:
-                    dialog_string += " " + self.normalize(text_string) + self.eos_token
-                dialog_string += " " + self.normalize(text[-1])
+                    dialog_string += " " + self.normalizer.normalize_string(text_string) + self.eos_token
+                dialog_string += " " + self.normalizer.normalize_string(text[-1])
             if include_end_ts:
                 dialog_string += self.eos_token
             text = dialog_string
         else:
-            text = self.normalize(text)
+            text = self.normalizer.normalize_string(text)
 
         encoding = self.tokenizer(
             text=text,
