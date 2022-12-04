@@ -295,9 +295,12 @@ class TurnGPT(pl.LightningModule, Utils):
         if trp_projection_steps > 0:
             self.trp_projection_type = trp_projection_type
             hidden_size = self.transformer.config.hidden_size
-            self.train_accuracy = torchmetrics.classification.MulticlassRecall(num_classes=self.num_speakers)
-            self.valid_accuracy = torchmetrics.classification.MulticlassRecall(num_classes=self.num_speakers)
-            self.test_accuracy = torchmetrics.classification.MulticlassRecall(num_classes=self.num_speakers)
+            self.train_accuracy = torchmetrics.Recall(task='multiclass', average='macro',        # might change the var names
+                                                        num_classes=self.num_speakers, top_k=1)
+            self.valid_accuracy = torchmetrics.Recall(task='multiclass', average='macro',
+                                                        num_classes=self.num_speakers, top_k=1)
+            self.test_accuracy = torchmetrics.Recall(task='multiclass', average='macro',
+                                                       num_classes=self.num_speakers, top_k=1)
 
             # MultiTask Head operating on n last hidden states
             if trp_projection_type.lower() == "attention":
@@ -454,8 +457,8 @@ class TurnGPT(pl.LightningModule, Utils):
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()   # ?
 
-        print("shift_labels:", shift_labels.shape) # (16, 499)
-        print("shift_logits:", shift_logits.shape) # (16, 500, 3)
+        # print("shift_labels:", shift_labels.shape) # (16, 499)
+        # print("shift_logits:", shift_logits.shape) # (16, 500, 3)
         # Manually select appropriate steps
         # Omit steps where label is -100 (like CrossEntropyLoss)
         indices_for_training = shift_labels != -100
@@ -697,8 +700,8 @@ class TurnGPT(pl.LightningModule, Utils):
     def validation_step_end(self, outputs):
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
-            print("validation_shift logits:", shift_logits.shape)
-            print("validation shit labels:", shift_labels.shape)
+            # print("validation_shift logits:", shift_logits.shape)
+            # print("validation shit labels:", shift_labels.shape)
             self.valid_accuracy.update(shift_logits, shift_labels)
             #self.log("bAcc", bacc, prog_bar=True, logger=False)
 
