@@ -102,7 +102,10 @@ class tokenizer_AMI():
             new_words += eos
         new_words += ' ' + words[-1]
         return new_words
-    
+
+    def __len__(self):
+        return len(self.tokenizer)
+
     def normalize(self, words):
         return self.normalizer.normalize_string(words)
                    
