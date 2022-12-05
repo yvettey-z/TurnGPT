@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from argparse import ArgumentParser
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,6 +16,7 @@ from turngpt.generation import generate
 from turngpt.plot_utils import plot_trp
 from turngpt.projection_labeler import ProjectionLabeler
 from turngpt.tokenizer_rev2 import tokenizer_AMI
+from turngpt.tokenizer import SpokenDialogTokenizer
 
 
 mpl.use("agg")
@@ -62,7 +65,7 @@ def load_transformer(
 
 
 class Utils:
-    tokenizer: tokenizer_AMI
+    tokenizer: SpokenDialogTokenizer | tokenizer_AMI
 
     def idx_to_string(self, idx):
         if isinstance(idx, torch.Tensor):
@@ -81,7 +84,11 @@ class Utils:
             if not string_or_list.strip().endswith(self.tokenizer.eos_token):
                 string_or_list += self.tokenizer.eos_token
 
-        t = self.tokenizer.tokenize_old(string_or_list, return_tensors="pt")
+        if isinstance(self.tokenizer, SpokenDialogTokenizer):
+            t = self.tokenizer(string_or_list, return_tensors = "pt")
+        else:
+            t = self.tokenizer.tokenize_old(string_or_list, return_tensors="pt")
+
         if not isinstance(t["input_ids"], torch.Tensor):
             tmp_inp, tmp_sp = [], []
             for inp, sp in zip(t["input_ids"], t["speaker_ids"]):
@@ -331,11 +338,14 @@ class TurnGPT(pl.LightningModule, Utils):
 
     def init_tokenizer(self):
         # The tokenizer should always be a part of the model
-        self.tokenizer = tokenizer_AMI()
+        if self.num_speakers == 2:
+            self.tokenizer = SpokenDialogTokenizer(self.name_or_path)
+        else:
+            self.tokenizer = tokenizer_AMI()
 
         # Add extra embeddings for custom tokens
         # Optional: Initialize <ts> to be close to punctuation tokens.
-        self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer.tokenizer))
+        self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer))
 
     def initialize_special_embeddings(self, tokens=["!", "?", "."]):
         """
