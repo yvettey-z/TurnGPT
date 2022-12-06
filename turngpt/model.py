@@ -1,6 +1,7 @@
 # from __future__ import annotations
 
 from argparse import ArgumentParser
+from typing import Union
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import wandb
@@ -65,7 +66,7 @@ def load_transformer(
 
 
 class Utils:
-    tokenizer: SpokenDialogTokenizer | tokenizer_AMI
+    tokenizer: Union[SpokenDialogTokenizer, tokenizer_AMI]
 
     def idx_to_string(self, idx):
         if isinstance(idx, torch.Tensor):
