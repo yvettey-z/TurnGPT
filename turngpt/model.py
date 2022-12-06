@@ -312,6 +312,8 @@ class TurnGPT(pl.LightningModule, Utils):
                     self.trp_projection_head.append(nn.Linear(hidden_size, 1))
                 #self.trp_projection_head = nn.Linear(hidden_size, 1)
 
+        self.tokenizer = None # None until calling init_tokenizer
+
         self.save_hyperparameters()
 
     @property
