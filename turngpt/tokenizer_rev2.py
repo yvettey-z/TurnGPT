@@ -12,6 +12,13 @@ from transformers.tokenization_utils_base import BatchEncoding
 import torch
 from typing import List, Union
 import logging
+import gc
+from argparse import ArgumentParser
+import os
+from os.path import expanduser, join, exists
+from os import listdir, cpu_count
+import re
+
 
 
 
@@ -44,6 +51,8 @@ class SpokenNormalizer:
         return normalizer
 
 
+
+
 class tokenizer_AMI():
     @property
     def unk_token(self):
@@ -64,7 +73,7 @@ class tokenizer_AMI():
     def __init__(self, tokenizer_type = 'gpt2', model_max_length = 1024):
         super().__init__()
         self.normalizer = SpokenNormalizer()
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_type)
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_type, add_prefix_space=True)
         self.tokenizer.model_max_length = model_max_length
         speaker_tokens = ["<speaker1>", "<speaker2>", "<speaker3>", "<speaker4>"]
         self.tokenizer.add_special_tokens({'pad_token':'<pad>', "eos_token": "<ts>", 
@@ -81,7 +90,10 @@ class tokenizer_AMI():
         self.sp4_token_id = self.tokenizer.convert_tokens_to_ids(self.sp4_token)
 
 
-    def adding_eos(self, words, speakers):
+    def __len__(self):
+        return len(self.tokenizer)
+    
+    def adding_eos_list(self, words, speakers, word_ids, word_start_times, word_end_times):
         """
         Function:
           add eos_token to a list of words when turn-shifting happened.
@@ -94,75 +106,75 @@ class tokenizer_AMI():
         """
         assert len(speakers) == len(words)
         eos = self.tokenizer.eos_token
-        new_words = words[0]
-        for i in range(1, len(words)-1):
-          if words[i] not in ['.', ',', '!', '?', ':', ';',')', '(', '[',']','-',']']:
-            new_words += ' ' + words[i]
-          if speakers[i] != speakers[i+1]:
-            new_words += eos
-        new_words += ' ' + words[-1]
-        return new_words
+        new_words = []
+        new_speakers = []
+        new_word_ids = []
+        new_word_start_times = []
+        new_word_end_times = []
+        
+        video_list = listdir('/ocean/projects/cis220078p/yasano/amicorpus')
+        
+        for i in range(len(words)-1):
+            if word_ids[i][:7] in video_list:
+                if words[i] not in ['.', ',', '!', '?', ':', ';',')', '(', '[',']','-',']']:
+                    new_words.append(self.normalizer.normalize_string(words[i]))
+                    new_speakers.append(self.map_from_speaker_id[speakers[i]])
+                    new_word_ids.append(word_ids[i][:7])
+                    new_word_start_times.append(word_start_times[i])
+                    new_word_end_times.append(word_end_times[i])
+                    
+                if speakers[i] != speakers[i+1]:
+                    new_words.append(eos)
+                    new_speakers.append(self.map_from_speaker_id[speakers[i]])
+                    new_word_ids.append(word_ids[i][:7])
+                    new_word_start_times.append(word_end_times[i])
+                    new_word_end_times.append(word_end_times[i])
 
-    def __len__(self):
-        return len(self.tokenizer)
-
+        if word_ids[-1][:7] in video_list:
+            if words[-1] not in ['.', ',', '!', '?', ':', ';',')', '(', '[',']','-',']']:
+                new_words.append(self.normalizer.normalize_string(words[-1]))
+                new_speakers.append(self.map_from_speaker_id[speakers[-1]])
+                new_word_ids.append(word_ids[-1][:7])
+                new_word_start_times.append(word_start_times[-1])
+                new_word_end_times.append(word_end_times[-1])
+      
+        
+        return new_words, new_speakers, new_word_ids, new_word_start_times, new_word_end_times
+    
     def normalize(self, words):
         return self.normalizer.normalize_string(words)
                    
-    def speaker_compress(self, speakers):
-        """
-        Function:
-          change a time-synchronous list of speakers to a list of speakers that represents only order of speakers 
-        Args:
-          speakers: list(str), a time-synchronous list of speakers, one speaker corresponds to one word
-        Return:
-          new_speakers: list(str), an order-synchronous list of speakers, one speaker corresponds to one utterance
-        """
-        new_speakers = []
-        new_speakers.append(speakers[0])
-        for i in range(len(speakers)-1):
-          if speakers[i] != speakers[i+1]:
-            new_speakers.append(speakers[i+1])
-        return new_speakers
 
-    def _extract_speaker_states(self, input_ids, new_speakers):
-        """
-        Function:
-          create a time-synchronous list of speakers
-        Args:
-          normalized_words: list(str), a list of words 'after' normalized
-          new_speakers: list(str), an order-synchronous list of speakers, one speaker corresponds to one utterance
-          eos: str, eos_token
-          map_from_speaker_to_id: dict, mapping from spekaer name (A, B, etc) to id (1, 2, etc)
-        Return:
-          speaker_id: torch.tensor with the same length as words. Each speaker_id corresponds to one word in words  
-        """
-        num_words = len(input_ids)
-        speaker_id = torch.zeros(num_words)
-        counter = 0
-        for i in range(num_words):
-          speaker_id[i] = self.map_from_speaker_id[new_speakers[counter]]
-          if input_ids[i] == self.tokenizer.eos_token_id:
-            counter += 1
-        return speaker_id
-
-    def truncate(self, words, speakers):
+    def truncate(self, words, speakers, word_ids, word_start_times, word_end_times): 
         max_length = self.tokenizer.model_max_length
         new_words = []
         new_speakers = []
-        attention_mask = []
-        i = 0
+        new_word_ids = []
+        new_word_start_times = []
+        new_word_end_times = []
+
         while len(words) > max_length:
-          new_words.append(words[0 :  max_length])
-          new_speakers.append(speakers[0 : max_length])
-          words = words[max_length:]
-          speakers = speakers[max_length:]
-          attention_mask.append([1]*max_length)
-          i += 1
+            new_words.append(words[0 :  max_length])
+            new_speakers.append(speakers[0 : max_length])
+            new_word_ids.append(word_ids[0 :  max_length])
+            new_word_start_times.append(word_start_times[0 : max_length])
+            new_word_end_times.append(word_end_times[0 :  max_length])
+            
+            words = words[max_length:]
+            speakers = speakers[max_length:]
+            word_ids = word_ids[max_length:]
+            word_start_times = word_start_times[max_length:]
+            word_end_times = word_end_times[max_length:]
+          
         new_words.append(words)
         new_speakers.append(speakers)
-        attention_mask.append([1]*len(words))
-        return new_words, new_speakers, attention_mask
+        new_word_ids.append(word_ids)
+        new_word_start_times.append(word_start_times)
+        new_word_end_times.append(word_end_times)
+        dataset = {'word': new_words, 'speaker_ids': new_speakers, 'word_ids': new_word_ids,
+                   'word_start_times': new_word_start_times, 'word_end_times': new_word_end_times}
+
+        return dataset
 
     def __call__(self, dialogue):
         """
@@ -172,18 +184,35 @@ class tokenizer_AMI():
           dialogue, retrieved by dataset['train'/'validation'/'test'][int] which contains:
               dialogue['words']: list(str), a list of words before normalized
               dialogue['word_speakers']: list(str), an order-synchronous list of speakers, one speaker corresponds to one word
+              dialogue['word_ids']: list(str), a list of word_ids
+              dialogue['word_start_times']: list(str), a list of word_ids
+              dialogue['word_end_times']: list(str), a list of word_ids
         Return:
           data_list: {token_ids: list of tokens, attention_mask: list, speaker_ids: tensor of speaker_id}
         """
-        words = dialogue['words']
-        speakers = dialogue['word_speakers']
-        new_words = self.adding_eos(words, speakers)
-        new_speakers = self.speaker_compress(speakers)
-        normalized = self.normalizer.normalize_string(new_words)
-        embedding = self.tokenizer(normalized)
-        speaker_id = self._extract_speaker_states(embedding['input_ids'], new_speakers)
-        new_words, new_speakers, attention_mask = self.truncate(embedding['input_ids'], speaker_id)
-        dataset = {'word_ids': new_words, 'attention_mask': attention_mask, 'speaker_ids': new_speakers}
+        words, speakers, word_ids, word_start_times, word_end_times = self.adding_eos_list(dialogue['words'], dialogue['word_speakers'], dialogue['word_ids'], dialogue['word_start_times'], dialogue['word_end_times'])
+        
+        embedding = self.tokenizer(words, is_split_into_words=True)
+        word_ind_aligned = embedding.word_ids(0)
+        
+        token_aligned_speakers = []
+        token_aligned_word_ids = []
+        token_aligned_word_start_times = []
+        token_aligned_word_end_times = []
+        
+        for i in word_ind_aligned:
+            token_aligned_speakers.append(speakers[i])
+            token_aligned_word_ids.append(word_ids[i])
+            token_aligned_word_start_times.append(word_start_times[i])
+            token_aligned_word_end_times.append(word_end_times[i])
+            
+        
+        dataset = self.truncate(embedding['input_ids'], token_aligned_speakers, 
+                                token_aligned_word_ids, token_aligned_word_start_times,
+                                token_aligned_word_end_times)
+        del words, speakers, word_ids, word_start_times, word_end_times
+        del embedding, token_aligned_speakers, token_aligned_word_ids, token_aligned_word_start_times, token_aligned_word_end_times
+        gc.collect()
         return dataset
 
     def idx_to_tokens(self, ids):
@@ -220,6 +249,7 @@ class tokenizer_AMI():
 
     def convert_tokens_to_string(self, *args, **kwargs):
         return self.tokenizer.convert_tokens_to_string(*args, **kwargs).strip()
+    
     
     def tokenize_old(
         self,
@@ -287,9 +317,9 @@ class tokenizer_AMI():
         return encoding
 
     def _extract_speaker_states_old(self, input_ids):
-        '''
-        function called in tokenize_old
-        '''
+        
+        #function called in tokenize_old
+        
         # extract speaker states
         back_to_list = False
         if not isinstance(input_ids, torch.Tensor):
@@ -318,3 +348,7 @@ class tokenizer_AMI():
                 speaker_ids = [speaker_ids]
 
         return speaker_ids
+        
+
+
+
