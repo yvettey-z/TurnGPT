@@ -1,4 +1,7 @@
+# from __future__ import annotations
+
 from argparse import ArgumentParser
+from typing import Union
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import wandb
@@ -13,6 +16,7 @@ import torchmetrics
 from turngpt.generation import generate
 from turngpt.plot_utils import plot_trp
 from turngpt.projection_labeler import ProjectionLabeler
+from turngpt.tokenizer_rev2 import tokenizer_AMI
 from turngpt.tokenizer import SpokenDialogTokenizer
 
 
@@ -62,7 +66,7 @@ def load_transformer(
 
 
 class Utils:
-    tokenizer: SpokenDialogTokenizer
+    tokenizer: Union[SpokenDialogTokenizer, tokenizer_AMI]
 
     def idx_to_string(self, idx):
         if isinstance(idx, torch.Tensor):
@@ -81,7 +85,11 @@ class Utils:
             if not string_or_list.strip().endswith(self.tokenizer.eos_token):
                 string_or_list += self.tokenizer.eos_token
 
-        t = self.tokenizer(string_or_list, return_tensors="pt")
+        if isinstance(self.tokenizer, SpokenDialogTokenizer):
+            t = self.tokenizer(string_or_list, return_tensors = "pt")
+        else:
+            t = self.tokenizer.tokenize_old(string_or_list, return_tensors="pt")
+
         if not isinstance(t["input_ids"], torch.Tensor):
             tmp_inp, tmp_sp = [], []
             for inp, sp in zip(t["input_ids"], t["speaker_ids"]):
@@ -295,9 +303,12 @@ class TurnGPT(pl.LightningModule, Utils):
         if trp_projection_steps > 0:
             self.trp_projection_type = trp_projection_type
             hidden_size = self.transformer.config.hidden_size
-            self.train_accuracy = torchmetrics.Accuracy(average='macro', num_classes=2, multiclass=True)
-            self.valid_accuracy = torchmetrics.Accuracy(average='macro', num_classes=2, multiclass=True)
-            self.test_accuracy = torchmetrics.Accuracy(average='macro', num_classes=2, multiclass=True)
+            self.train_accuracy = torchmetrics.Recall(task='multiclass', average='macro',        # might change the var names
+                                                        num_classes=self.num_speakers, top_k=1)
+            self.valid_accuracy = torchmetrics.Recall(task='multiclass', average='macro',
+                                                        num_classes=self.num_speakers, top_k=1)
+            self.test_accuracy = torchmetrics.Recall(task='multiclass', average='macro',
+                                                       num_classes=self.num_speakers, top_k=1)
 
             # MultiTask Head operating on n last hidden states
             if trp_projection_type.lower() == "attention":
@@ -307,10 +318,15 @@ class TurnGPT(pl.LightningModule, Utils):
                     nn.Dropout(p=dropout) if dropout is not None else nn.Identity(),
                     )
                 if self.num_speakers > 2:
-                    self.trp_projection_head.append(nn.Linear(hidden_size, self.num_speakers))
+                    self.trp_projection_head = nn.Sequential(
+                        nn.Dropout(p=dropout) if dropout is not None else nn.Identity(),
+                        nn.Linear(hidden_size, self.num_speakers)
+                    )
                 else:
-                    self.trp_projection_head.append(nn.Linear(hidden_size, 1))
-                #self.trp_projection_head = nn.Linear(hidden_size, 1)
+                    self.trp_projection_head = nn.Sequential(
+                        nn.Dropout(p=dropout) if dropout is not None else nn.Identity(),
+                        nn.Linear(hidden_size, 1))
+                # nn.Sequential doesn't have attribute as "append"
 
         self.tokenizer = None # None until calling init_tokenizer
 
@@ -325,7 +341,10 @@ class TurnGPT(pl.LightningModule, Utils):
 
     def init_tokenizer(self):
         # The tokenizer should always be a part of the model
-        self.tokenizer = SpokenDialogTokenizer(self.name_or_path)
+        if self.num_speakers == 2:
+            self.tokenizer = SpokenDialogTokenizer(self.name_or_path)
+        else:
+            self.tokenizer = tokenizer_AMI()
 
         # Add extra embeddings for custom tokens
         # Optional: Initialize <ts> to be close to punctuation tokens.
@@ -371,6 +390,7 @@ class TurnGPT(pl.LightningModule, Utils):
         return labels
 
     def get_projection_labels(self, input_ids, mask, value=-100):
+        """match with speaker id, instead of eos token id"""
         labeler = ProjectionLabeler(
             projection_steps=self.trp_projection_steps,
             token_id=self.tokenizer.eos_token_id,
@@ -384,7 +404,7 @@ class TurnGPT(pl.LightningModule, Utils):
     @torch.no_grad()
     def get_loss_weight(self):
         weight = (
-            torch.ones(len(self.tokenizer), dtype=torch.float)
+            torch.ones(len(self.tokenizer.tokenizer), dtype=torch.float)
             * self.weight_regular_token
         )
         weight[self.tokenizer.eos_token_id] = self.weight_eos_token
@@ -431,25 +451,51 @@ class TurnGPT(pl.LightningModule, Utils):
             loss = loss.mean()
         return loss
 
-    def bce_loss(self, logits, labels):
+    def ce_loss(self, logits, labels):
         """
-        Simple BCELoss for binary trp projection
+        Extended simple BCELoss from binary trp projection to multi-class trp projection
 
-        Must extend this if multiple labels are to be used...
+        Input: num_speakers, 2 by default
         """
-        loss_fct = nn.BCEWithLogitsLoss()
+        if self.num_speakers == 2:
+            loss_fct = nn.BCEWithLogitsLoss()
+
+            shift_logits = logits[..., :-1]   #.contiguous()
+            shift_labels = labels[..., 1:]    #.contiguous()
+
+        else:
+            loss_fct = nn.CrossEntropyLoss(reduction="none")
 
         # Shift so that tokens < n predict n
-        shift_logits = logits[..., :-1]  # , :].contiguous()
-        shift_labels = labels[..., 1:]  # .contiguous()
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()   # ?
 
+        # print("shift_labels:", shift_labels.shape) # (16, 499)
+        # print("shift_logits:", shift_logits.shape) # (16, 500, 3)
         # Manually select appropriate steps
         # Omit steps where label is -100 (like CrossEntropyLoss)
         indices_for_training = shift_labels != -100
-        loss = loss_fct(
-            torch.masked_select(shift_logits, indices_for_training),
-            torch.masked_select(shift_labels, indices_for_training),
-        )
+
+        if self.num_speakers == 2:
+            loss = loss_fct(
+                torch.masked_select(shift_logits, indices_for_training),
+                torch.masked_select(shift_labels, indices_for_training),
+            )
+        else:
+            #indices_for_training_expanded = indices_for_training.unsqueeze(-1).expand(shift_logits.shape).type(torch.uint8)
+            #print("indices_for_training_expanded:", indices_for_training_expanded.shape)
+            #mask_logits = torch.masked_select(shift_logits, indices_for_training_expanded)
+            #mask_labels = torch.masked_select(shift_labels, indices_for_training)
+
+            # print("loss_fct[0]:", mask_logits.shape)
+            # print("loss_fct[0]:", mask_labels.shape)
+            loss = loss_fct(
+                # torch.masked_select(shift_logits, indices_for_training_expanded).reshape((-1, self.num_speakers)),
+                torch.reshape(shift_logits, (-1, self.num_speakers)),
+                torch.reshape(shift_labels, (-1,))
+            )
+
+            loss = torch.sum(loss * torch.reshape(indices_for_training, (-1,))) / torch.sum(indices_for_training)
         # shift_logits = torch.masked_select(shift_logits, indices_for_training)
         # shift_labels = torch.masked_select(shift_labels, indices_for_training)
         # loss = loss_fct(shift_logits, shift_labels)
@@ -483,6 +529,7 @@ class TurnGPT(pl.LightningModule, Utils):
         self,
         input_ids=None,
         speaker_ids=None,
+        num_speakers=None,
         labels=None,
         mc_labels=None,
         use_cache=None,
@@ -522,6 +569,7 @@ class TurnGPT(pl.LightningModule, Utils):
         )
 
         hidden_states = transformer_outputs[0]
+        num_speakers = self.num_speakers
 
         # Set device for model parallelism
         if self.transformer.model_parallel:
@@ -540,10 +588,16 @@ class TurnGPT(pl.LightningModule, Utils):
         if self.trp_projection_steps > 0:
             # NOTE:
             # Assumed to only guess a single class
-            mc_logits = self.trp_projection_head(hidden_states).squeeze(-1)
+            if num_speakers == 2:
+                mc_logits = self.trp_projection_head(hidden_states).squeeze(-1)   # still need to check
+            else:
+                mc_logits = self.trp_projection_head(hidden_states)
 
             if mc_labels is not None:
-                mc_loss = self.bce_loss(mc_logits, mc_labels)
+                if num_speakers == 2:
+                    mc_loss = self.ce_loss(mc_logits, mc_labels)
+                else:
+                    mc_loss = self.ce_loss(mc_logits, speaker_ids)
 
         # if not return_dict:
         #     output = (lm_logits, mc_logits) + transformer_outputs[1:]
@@ -582,7 +636,7 @@ class TurnGPT(pl.LightningModule, Utils):
             print(self.tokenizer)
 
             # Add extra embeddings for custom tokens
-            self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer))
+            self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer.tokenizer))
             print("Resized weights")
             print("#" * 70)
 
@@ -592,7 +646,7 @@ class TurnGPT(pl.LightningModule, Utils):
         proj_labels = None
         if self.trp_projection_steps > 0:
             proj_labels = self.get_projection_labels(
-                batch["input_ids"], mask=batch["attention_mask"]
+               batch["input_ids"], mask=batch["attention_mask"]
             )
 
         if self.omit_dialog_states:
@@ -650,7 +704,7 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("val_loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
             self.log("val_loss", total_loss)
-            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
+            return {"loss": total_loss, "mc_logits": out["mc_logits"].detach(), "mc_labels": proj_labels.detach()}
         else:
             total_loss = out["loss"]
             self.log("val_loss", total_loss)
@@ -659,6 +713,8 @@ class TurnGPT(pl.LightningModule, Utils):
     def validation_step_end(self, outputs):
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
+            # print("validation_shift logits:", shift_logits.shape)
+            # print("validation shit labels:", shift_labels.shape)
             self.valid_accuracy.update(shift_logits, shift_labels)
             #self.log("bAcc", bacc, prog_bar=True, logger=False)
 
@@ -691,7 +747,7 @@ class TurnGPT(pl.LightningModule, Utils):
             self.log("test_loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
             self.log("test_loss", total_loss)
-            return {"loss": total_loss, "mc_logits": out["mc_logits"], "mc_labels": proj_labels}
+            return {"loss": total_loss, "mc_logits": out["mc_logits"].detach(), "mc_labels": proj_labels.detach()}
         else:
             total_loss = out["loss"]
             self.log("test_loss", total_loss)
@@ -709,14 +765,27 @@ class TurnGPT(pl.LightningModule, Utils):
     
     def shift_logits_labels(self, logits, labels):
         # Shift so that tokens < n predict n
-        shift_logits = logits[..., :-1]  # , :].contiguous()
-        shift_labels = labels[..., 1:]  # .contiguous()
+        if self.num_speakers == 2:
+            shift_logits = logits[..., :-1]  # , :].contiguous()
+            shift_labels = labels[..., 1:]  # .contiguous()
 
-        # Manually select appropriate steps
+        else:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Manually select appropriate steps
         # Omit steps where label is -100 (like CrossEntropyLoss)
         indices_for_training = shift_labels != -100
-        shift_logits = torch.masked_select(shift_logits, indices_for_training)
-        shift_labels = torch.masked_select(shift_labels, indices_for_training)
+
+        if self.num_speakers == 2:
+            shift_logits = torch.masked_select(shift_logits, indices_for_training)
+            shift_labels = torch.masked_select(shift_labels, indices_for_training)
+
+        else:
+            #indices_for_training_expanded = torch.reshape(indices_for_training.unsqueeze(-1).expand(shift_logits.shape), (-1, self.num_speakers))
+            indices_for_training = torch.reshape(indices_for_training, (-1,))
+
+            shift_logits = torch.reshape(shift_logits, (-1, self.num_speakers))[indices_for_training]
+            shift_labels = torch.reshape(shift_labels, (-1,))[indices_for_training]
 
         return shift_logits, shift_labels.int()
 

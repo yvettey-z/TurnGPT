@@ -6,3 +6,5 @@ matplotlib
 einops
 pytest
 torchaudio
+soundfile  # support encoding audio data
+librosa # To support decoding audio files

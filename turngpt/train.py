@@ -6,6 +6,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 import pytorch_lightning as pl
 
+from datasets_turntaking.dialog_text_dm_rev2 import ConversationalDM2  # put the old conversationldm
 from datasets_turntaking.dialog_text_dm import ConversationalDM
 from turngpt.model import TurnGPT, TurnGPTWandbCallbacks
 
@@ -26,6 +27,7 @@ def default_logger_callbacks(name, args, callbacks):
         id=args.id,
         resume=args.resume
     )
+
     # logger.watch(model)
 
     id_hash = logger.experiment.path.split("/")[-1]
@@ -54,7 +56,7 @@ def default_logger_callbacks(name, args, callbacks):
 def train():
     parser = ArgumentParser()
     parser = TurnGPT.add_model_specific_args(parser)
-    parser = ConversationalDM.add_data_specific_args(parser)
+    parser = ConversationalDM2.add_data_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--name_info", type=str, default="")
@@ -96,21 +98,36 @@ def train():
     model.print_parameters()
 
     # DataModule
-    dm = ConversationalDM(
-        datasets=args.datasets,
-        tokenizer=model.tokenizer,
-        batch_size=args.batch_size,
-        max_length=args.max_length,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_memory,
-        savepath=args.savepath,
-        overwrite=args.overwrite,
-        load_from_cache_file=args.load_from_cache_file,
-        num_proc=args.num_proc,
-    )
+    if args.num_speakers == 2:
+        dm = ConversationalDM(
+            datasets=args.datasets,
+            tokenizer=model.tokenizer,
+            batch_size=args.batch_size,
+            max_length=args.max_length,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_memory,
+            savepath=args.savepath,
+            overwrite=args.overwrite,
+            load_from_cache_file=args.load_from_cache_file,
+            num_proc=args.num_proc,
+        )
+
+    else:
+        dm = ConversationalDM2(
+            datasets=args.datasets,
+            tokenizer=model.tokenizer,
+            batch_size=args.batch_size,
+            max_length=args.max_length,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_memory,
+            savepath=args.savepath,
+            overwrite=args.overwrite,
+            load_from_cache_file=args.load_from_cache_file,
+            num_proc=args.num_proc,
+        )
+
     dm.prepare_data()
 
-    # Callbacks & Logger
     logger = None
     callbacks = None
 
