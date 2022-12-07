@@ -405,7 +405,7 @@ class TurnGPT(pl.LightningModule, Utils):
     @torch.no_grad()
     def get_loss_weight(self):
         weight = (
-            torch.ones(len(self.tokenizer.tokenizer), dtype=torch.float)
+            torch.ones(len(self.tokenizer), dtype=torch.float)
             * self.weight_regular_token
         )
         weight[self.tokenizer.eos_token_id] = self.weight_eos_token
@@ -639,7 +639,7 @@ class TurnGPT(pl.LightningModule, Utils):
             print(self.tokenizer)
 
             # Add extra embeddings for custom tokens
-            self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer.tokenizer))
+            self.transformer.resize_token_embeddings(new_num_tokens=len(self.tokenizer))
             print("Resized weights")
             print("#" * 70)
 
