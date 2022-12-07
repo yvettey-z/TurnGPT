@@ -27,9 +27,11 @@ def plot_trp(
 
     x = torch.arange(len(trp))
     if proj is not None:
-        proj_argmax = torch.argmax(proj, dim=1)
-        ax.bar(x, proj_argmax, alpha=0.1, width=1.0, color="b", label="projection")
-    #   ax.bar(x, proj, alpha=0.1, width=1.0, color="b", label="projection")
+        if len(proj.shape) > 1:
+            proj_argmax = torch.argmax(proj, dim=1)
+            ax.bar(x, proj_argmax, alpha=0.1, width=1.0, color="b", label="projection")
+        else:
+            ax.bar(x, proj, alpha=0.1, width=1.0, color="b", label="projection")
     ax.bar(x, trp, width=0.3, color="b", label="TRP")
     ax.set_xticks(x)
     if text is not None:
