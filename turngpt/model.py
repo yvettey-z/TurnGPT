@@ -329,7 +329,7 @@ class TurnGPT(pl.LightningModule, Utils):
                         nn.Linear(hidden_size, 1))
                 # nn.Sequential doesn't have attribute as "append"
 
-        self.init_tokenizer()
+        self.tokenizer = None # None until calling init_tokenizer
 
         self.save_hyperparameters()
 
