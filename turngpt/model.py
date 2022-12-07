@@ -303,11 +303,12 @@ class TurnGPT(pl.LightningModule, Utils):
         if trp_projection_steps > 0:
             self.trp_projection_type = trp_projection_type
             hidden_size = self.transformer.config.hidden_size
-            self.train_accuracy = torchmetrics.Recall(task='multiclass', average='macro',        # might change the var names
+            task = 'multiclass' if self.num_speakers > 2 else 'binary'
+            self.train_accuracy = torchmetrics.Recall(task=task, average='macro',        # might change the var names
                                                         num_classes=self.num_speakers, top_k=1)
-            self.valid_accuracy = torchmetrics.Recall(task='multiclass', average='macro',
+            self.valid_accuracy = torchmetrics.Recall(task=task, average='macro',
                                                         num_classes=self.num_speakers, top_k=1)
-            self.test_accuracy = torchmetrics.Recall(task='multiclass', average='macro',
+            self.test_accuracy = torchmetrics.Recall(task=task, average='macro',
                                                        num_classes=self.num_speakers, top_k=1)
 
             # MultiTask Head operating on n last hidden states
@@ -442,12 +443,14 @@ class TurnGPT(pl.LightningModule, Utils):
         # Shift so that tokens < n predict n
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
+        indices_for_training = shift_labels != -100
 
         # Flatten the tokens and calc loss
         loss = loss_fct(
             shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
         )
         if reduction != "none":
+            loss = torch.sum(loss * torch.reshape(indices_for_training, (-1,))) / torch.sum(indices_for_training)
             loss = loss.mean()
         return loss
 
@@ -657,6 +660,7 @@ class TurnGPT(pl.LightningModule, Utils):
             speaker_ids=batch["speaker_ids"],
             labels=lm_labels,
             mc_labels=proj_labels,
+            attention_mask=batch["attention_mask"],
         )
 
         if self.trp_projection_steps > 0:
@@ -697,6 +701,7 @@ class TurnGPT(pl.LightningModule, Utils):
             speaker_ids=batch["speaker_ids"],
             labels=lm_labels,
             mc_labels=proj_labels,
+            attention_mask=batch["attention_mask"],
         )
 
         if self.trp_projection_steps > 0:
@@ -740,6 +745,7 @@ class TurnGPT(pl.LightningModule, Utils):
             speaker_ids=batch["speaker_ids"],
             labels=lm_labels,
             mc_labels=proj_labels,
+            attention_mask=batch["attention_mask"],
         )
 
         if self.trp_projection_steps > 0:
