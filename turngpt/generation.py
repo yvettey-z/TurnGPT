@@ -272,26 +272,30 @@ def generate_sample(
             if diff > 0:
                 # fill with -1 to indicate that we don't have any words
                 new_inp.append(torch.cat((inp, fill * -1), dim=-1))
-                new_sp.append(
-                    torch.cat((completed["speaker_ids"][i], fill * -1), dim=-1)
-                )
+                if not model.omit_dialog_states:
+                    new_sp.append(
+                        torch.cat((completed["speaker_ids"][i], fill * -1), dim=-1)
+                    )
                 # fill with 1 to make prob calculations correct
                 new_probs.append(
                     torch.cat((completed["probs"][i], fill.float()), dim=-1)
                 )
             else:
                 new_inp.append(inp)
-                new_sp.append(completed["speaker_ids"][i])
+                if not model.omit_dialog_states:
+                    new_sp.append(completed["speaker_ids"][i])
                 new_probs.append(completed["probs"][i])
 
         completed["input_ids"] = torch.cat(new_inp)
-        completed["speaker_ids"] = torch.cat(new_sp)
+        if not model.omit_dialog_states:
+            completed["speaker_ids"] = torch.cat(new_sp)
         completed["probs"] = torch.cat(new_probs)
         completed["most_likely"] = completed["probs"].log().sum(dim=-1).argmax()
         completed["tokens"] = tokens
     else:
         completed["input_ids"] = torch.cat(completed["input_ids"])
-        completed["speaker_ids"] = torch.cat(completed["speaker_ids"])
+        if not model.omit_dialog_states:
+            completed["speaker_ids"] = torch.cat(completed["speaker_ids"])
         completed["probs"] = torch.cat(completed["probs"])
         p = completed["probs"].log().sum(dim=-1)
         completed["most_likely"] = p.argmax()
