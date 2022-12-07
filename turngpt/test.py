@@ -54,6 +54,7 @@ def test():
         num_proc=args.num_proc,
     )
     dm.prepare_data()
+    dm.setup("test")
 
     # Callbacks & Logger
     callbacks = None
