@@ -5,6 +5,7 @@ from typing import Union
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import wandb
+import numpy as np
 
 from transformers import GPT2LMHeadModel, GPT2Config
 from transformers.models.gpt2.modeling_gpt2 import GPT2DoubleHeadsModelOutput
@@ -13,11 +14,12 @@ import torch
 import torch.nn as nn
 import torchmetrics
 
-from turngpt.generation import generate
+from turngpt.generation import generate, generate_greedy_from_tokenized
 from turngpt.plot_utils import plot_trp
 from turngpt.projection_labeler import ProjectionLabeler
 from turngpt.tokenizer_rev2 import tokenizer_AMI
 from turngpt.tokenizer import SpokenDialogTokenizer
+from turngpt.eval import calc_score, process_for_nltk
 
 
 mpl.use("agg")
@@ -330,6 +332,8 @@ class TurnGPT(pl.LightningModule, Utils):
                 # nn.Sequential doesn't have attribute as "append"
 
         self.tokenizer = None # None until calling init_tokenizer
+
+        self.gen_scores = {'BLEU-2': 0, 'BLEU-4': 0, 'METEOR': 0, 'NIST-2': 0, 'NIST-4': 0, 'count': 0} # Only for test
 
         self.save_hyperparameters()
 
@@ -748,26 +752,75 @@ class TurnGPT(pl.LightningModule, Utils):
             attention_mask=batch["attention_mask"],
         )
 
+        ret = self.test_generate(batch)
+
         if self.trp_projection_steps > 0:
             self.log("test_loss_lm", out["loss"])
             self.log("test_loss_projection", out["mc_loss"])
             total_loss = out["loss"] + out["mc_loss"]
             self.log("test_loss", total_loss)
-            return {"loss": total_loss, "mc_logits": out["mc_logits"].detach(), "mc_labels": proj_labels.detach()}
+            ret['loss'] = total_loss
+            ret['mc_logits'] = out["mc_logits"].detach()
+            ret['mc_labels'] = proj_labels.detach()
+            return ret
         else:
             total_loss = out["loss"]
             self.log("test_loss", total_loss)
-            return {"loss": total_loss}
+            ret['loss'] = total_loss
+            return ret
 
     def test_step_end(self, outputs):
+        for k in self.gen_scores:
+            self.gen_scores[k] += outputs[k]
+        
         if self.trp_projection_steps > 0:
             shift_logits, shift_labels = self.shift_logits_labels(outputs["mc_logits"], outputs["mc_labels"])
             self.test_accuracy.update(shift_logits, shift_labels)
 
     def test_epoch_end(self, outputs):
+        for k in self.gen_scores:
+            if k != 'count':
+                self.log(k, self.gen_scores[k] / self.gen_scores['count'])
+
         if self.trp_projection_steps > 0:
             self.log("test_bAcc_epoch", self.test_accuracy.compute())
             self.test_accuracy.reset()
+
+    @torch.no_grad()
+    def test_generate(self, batch):
+        input_ids = batch['input_ids'].numpy(force=True)
+        if not self.omit_dialog_states:
+            speaker_ids = batch['speaker_ids'].numpy(force=True)
+
+        scores = {'BLEU-2': 0, 'BLEU-4': 0, 'METEOR': 0, 'NIST-2': 0, 'NIST-4': 0, 'count': 0}
+        for b in range(len(input_ids)):
+            # Split by eos
+            split_indices = np.where(input_ids[b]==self.tokenizer.eos_token_id)[0] + 1
+            input_id_ref = np.split(input_ids[b], split_indices)[:-1] # Remove padding
+            
+            # Generate the next turn
+            for i in range(len(split_indices) - 1): # Exclude the last non-padded turn because the reference doesn't exist
+                if i > 1 and split_indices[i] - split_indices[i-1] == 1: # Only for DialoGPT
+                    break
+                batch_for_gen = {}
+                batch_for_gen["input_ids"] = torch.from_numpy(input_ids[b][:split_indices[i]]).unsqueeze(0).to(self.device)
+                if self.omit_dialog_states:
+                    batch_for_gen["speaker_ids"] = None
+                else:
+                    batch_for_gen["speaker_ids"] = torch.from_numpy(speaker_ids[b][:split_indices[i]]).unsqueeze(0).to(self.device)
+                generated = generate_greedy_from_tokenized(self, batch_for_gen, 100, True)['tokens'][0]
+
+                # Preprocess for NLTK metrics and compute them
+                generated = self.tokenizer.normalize(generated)
+                generated = process_for_nltk(generated, self.tokenizer)
+                reference = self.tokenizer.decode(torch.from_numpy(input_id_ref[i+1]))
+                reference = process_for_nltk(reference, self.tokenizer)
+                sent_score = calc_score([reference], generated)
+                for k, v in sent_score.items():
+                    scores[k] += v
+                scores['count'] += 1
+            
+        return scores
     
     def shift_logits_labels(self, logits, labels):
         # Shift so that tokens < n predict n

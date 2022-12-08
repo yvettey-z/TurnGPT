@@ -77,6 +77,14 @@ class tokenizer_AMI():
     @property
     def pad_token_id(self):
         return self.tokenizer.pad_token_id
+
+    @property
+    def bos_token(self):
+        return self.tokenizer.bos_token
+
+    @property
+    def bos_token_id(self):
+        return self.tokenizer.bos_token_id
     
     def __init__(self, tokenizer_type = 'gpt2', model_max_length = 1024):
         super().__init__()

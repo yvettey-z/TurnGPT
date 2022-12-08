@@ -78,17 +78,15 @@ def update_speaker_ids(batch, tokenizer):
         )
     return next_speaker
 
-
 @torch.no_grad()
-def generate_greedy(
+def generate_greedy_from_tokenized(
     model,
-    context,
+    batch,
     n_steps=20,
     stop_at_eos=False,
 ):
     """Generate by sampling"""
     # prepare input for model
-    batch = model.tokenize_strings(context)
     batch["attention_mask"] = None
 
     # keep track of everything if `use_cache` is True
@@ -140,6 +138,19 @@ def generate_greedy(
     for k, v in batch.items():
         if isinstance(v, torch.Tensor):
             batch[k] = v.cpu()
+    return batch
+
+@torch.no_grad()
+def generate_greedy(
+    model,
+    context,
+    n_steps=20,
+    stop_at_eos=False,
+):
+    """Generate by sampling"""
+    # prepare input for model
+    batch = model.tokenize_strings(context)
+    batch = generate_greedy_from_tokenized(model, batch, n_steps, stop_at_eos)
     return batch
 
 
