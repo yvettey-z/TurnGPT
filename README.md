@@ -28,7 +28,7 @@ turn-shift token between turns.
   - source env: `conda source turngpt`
   - If you use PSC, request a GPU node before activating an environment
 * PyTorch: `conda install pytorch torchvision torchaudio cudatoolkit -c pytorch`
-* Dependencies: `pip install -r requirements.txt` (Note: if you get `ModuleNotFoundError: No module named 'setuptools_rust'`, upgrade pip with `pip install --upgrade pip`
+* Dependencies: `pip install -r requirements.txt` (Note: if you get `ModuleNotFoundError: No module named 'setuptools_rust'`, upgrade pip with `pip install --upgrade pip` and `python -m nltk.downloader popular`
 * Install [Datasets turn-taking](https://github.com/akonoroshi/datasets_turntaking)
     - clone repo, cd to repo, and install dependencies: `pip install -r requirements.txt`
     - install repo: `pip install -e .`
