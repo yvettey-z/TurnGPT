@@ -788,9 +788,10 @@ class TurnGPT(pl.LightningModule, Utils):
 
     @torch.no_grad()
     def test_generate(self, batch):
-        input_ids = torch.Tensor.numpy(batch['input_ids'], force=True)
+        print(type(batch['input_ids']))
+        input_ids = batch['input_ids'].numpy(force=True)
         if not self.omit_dialog_states:
-            speaker_ids = torch.Tensor.numpy(batch['speaker_ids'], force=True)
+            speaker_ids = batch['speaker_ids'].numpy(force=True)
 
         scores = {'BLEU-2': 0, 'BLEU-4': 0, 'METEOR': 0, 'NIST-2': 0, 'NIST-4': 0, 'count': 0}
         for b in range(len(input_ids)):
