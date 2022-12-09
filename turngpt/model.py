@@ -788,7 +788,7 @@ class TurnGPT(pl.LightningModule, Utils):
 
     @torch.no_grad()
     def test_generate(self, batch):
-        input_ids = torch.numoy(batch['input_ids'], force=True)
+        input_ids = torch.numpy(batch['input_ids'], force=True)
         if not self.omit_dialog_states:
             speaker_ids = torch.numpy(batch['speaker_ids'], force=True)
 
