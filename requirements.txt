@@ -9,3 +9,5 @@ torchaudio
 soundfile  # support encoding audio data
 librosa # To support decoding audio files
 nltk
+ffmpeg-python
+opencv-python
